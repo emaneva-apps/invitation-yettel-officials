@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Покана – Месец на онлайн безопасността в училище</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #053264; display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+    #__bundler_loading { position: fixed; bottom: 20px; right: 20px; font: 13px/1.4 -apple-system, BlinkMacSystemFont, sans-serif; color: #666; background: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); z-index: 10000; }
+    #__bundler_thumbnail { position: fixed; inset: 0; width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; background: #053264; z-index: 9999; }
+    #__bundler_thumbnail svg { width: 100%; height: 100%; object-fit: contain; }
+    #__bundler_placeholder { color: #999; font-size: 14px; }
+  </style>
+  <noscript>
+    <style>#__bundler_loading { display: none; }</style>
+    <div style="position:fixed;bottom:12px;left:12px;font:13px/1.4 -apple-system,BlinkMacSystemFont,sans-serif;color:#999;background:rgba(255,255,255,0.9);padding:6px 12px;border-radius:6px;box-shadow:0 1px 4px rgba(0,0,0,0.08);z-index:10000;">
+      This page requires JavaScript to display.
+    </div>
+  </noscript>
+</head>
+<body>
+  <div id="__bundler_thumbnail">
+  <svg viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+    <rect width="120" height="120" fill="#053264"></rect>
+    <text x="60" y="70" font-family="Arial, sans-serif" font-size="46" font-weight="bold" fill="#b4ff00" text-anchor="middle">!</text>
+  </svg>
+</div>
+  <div id="__bundler_loading">Unpacking...</div>
+
+  <script>
+    
+document.addEventListener('DOMContentLoaded', async function() {
+  const loading = document.getElementById('__bundler_loading');
+  function setStatus(msg) { if (loading) loading.textContent = msg; }
+
+  const FONT_MIME = /^(font[/]|application[/](x-)?font-|application[/]vnd\.ms-fontobject)/i;
+  const MIME_TOKEN = /^[\w.+-]+[/][\w.+-]+$/;
+  function toBase64(bytes) {
+    let bin = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    }
+    return btoa(bin);
+  }
+
+  // Error sink persists across replaceWith since it's on window, not the DOM.
+  window.addEventListener('error', function(e) {
+    // Failed resource loads (CSP-blocked links, scripts, images) fire plain
+    // events at the element — warn only; real JS errors carry message/error.
+    if (!e.message && !e.error && e.target && e.target !== window) {
+      console.warn('[bundle] resource failed to load:',
+        e.target.tagName, String(e.target.src || e.target.href || ''));
+      return;
+    }
+    var p = document.body || document.documentElement;
+    var d = document.getElementById('__bundler_err') || p.appendChild(document.createElement('div'));
+    d.id = '__bundler_err';
+    d.style.cssText = 'position:fixed;bottom:12px;left:12px;right:12px;font:12px/1.4 ui-monospace,monospace;background:#2a1215;color:#ff8a80;padding:10px 14px;border-radius:8px;border:1px solid #5c2b2e;z-index:99999;white-space:pre-wrap;max-height:40vh;overflow:auto';
+    d.textContent = (d.textContent ? d.textContent + String.fromCharCode(10) : '') +
+      '[bundle] ' + (e.message || e.type) +
+      (e.filename ? ' (' + e.filename.slice(0, 60) + ':' + e.lineno + ')' : '');
+  }, true);
+
+  try {
+    const manifestEl = document.querySelector('script[type="__bundler/manifest"]');
+    const templateEl = document.querySelector('script[type="__bundler/template"]');
+    if (!manifestEl || !templateEl) {
+      setStatus('Error: missing bundle data');
+      console.error('[bundler] Missing script tags — manifestEl:', !!manifestEl, 'templateEl:', !!templateEl);
+      return;
+    }
+
+    const manifest = JSON.parse(manifestEl.textContent);
+    let template = JSON.parse(templateEl.textContent);
+
+    // Nested page bundles (iframe targets). Each ships ONCE, in the ROOT
+    // document's manifest; frame srcs carry an about:blank#<uuid> marker
+    // instead of a substitutable uuid. Every document mints the blobs for
+    // its OWN frames — from local text at the root, or text obtained from
+    // its DIRECT parent over the relay protocol below — so each frame
+    // navigation stays same-origin with its initiator and a deduped page
+    // loads at any depth on any host, including a file:// download's
+    // opaque origins (where a blob minted by one document cannot be
+    // navigated to by another).
+    const pageOrderEl = document.querySelector('script[type="__bundler/page_order"]');
+    const pageOrder = pageOrderEl ? JSON.parse(pageOrderEl.textContent) : [];
+    const pageSet = new Set(pageOrder);
+    const pageTexts = {};
+
+    // ── Nested-page text protocol (parent-chain relay) ──
+    // Page bundles ship once, in the ROOT document's manifest. Every
+    // document mints the blobs for its OWN frames, obtaining page text
+    // through a strict parent-chain relay: a document only ever SENDS to
+    // its direct parent (which, for every document the publisher's own
+    // runtime minted, is another publisher document) and only ACCEPTS
+    // text from that direct parent; requests from below are honored only
+    // for the document's own child frames, and the ROOT never sends
+    // upward at all. That last rule is load-bearing: the artifact host's
+    // frame-ancestors allows claude.ai (and friends) to frame an
+    // artifact, so window.top can be a FOREIGN document — a top-addressed
+    // protocol would hand page uuids to that ancestor and accept forged
+    // "page text" from it, minting attacker HTML as an artifact-origin
+    // blob document. The chain never touches the ancestor: requests stop
+    // at the root, replies are origin-addressed per hop (never '*' when
+    // an origin exists), and both directions are origin-gated (on https
+    // a foreign sender's origin can never equal this document's; in
+    // opaque contexts — file:// — everything serializes as 'null', where
+    // an embedded EXTERNAL frame still fails the gate by carrying its
+    // own real origin, and a sandboxed child of such a frame is excluded
+    // by the own-child-frames check plus uuid unguessability). Shape is
+    // deny-by-default: one request form, one reply form, no error
+    // replies.
+    // window.origin is the SERIALIZED SECURITY origin ('null' in opaque
+    // contexts such as a sandboxed preview iframe) — location.origin is
+    // computed from the URL and stays 'https://…' even when the document
+    // is sandboxed, which would misgate every opaque chain.
+    const OWN_TARGET = /^https?:[/][/]/.test(window.origin || '')
+      ? window.origin
+      : '*';
+    function trustedOrigin(e) {
+      if (e.origin === window.origin) return true; // https chains; opaque==opaque
+      // file:// trees: Chrome serializes the file document's origin as
+      // 'file://' while the blob: documents it mints serialize as 'null',
+      // so the two legitimate shapes can never string-match — accept the
+      // pair in both directions. https origins never serialize as either,
+      // and sender identity (own child frame / direct parent) is checked
+      // separately.
+      return (
+        (e.origin === 'null' &&
+          (window.origin === 'file://' ||
+            window.location.protocol === 'file:')) ||
+        (/^file:/.test(e.origin) && window.origin === 'null')
+      );
+    }
+    // Non-empty only in the root document (nested bundles ship an empty
+    // island), so it doubles as the root marker: the root answers from
+    // local text and treats a miss as authoritative — never relaying to
+    // its (possibly foreign) parent.
+    const isPageRoot = pageOrder.length > 0;
+    const blobUrls = {};
+    const resourceBlobs = {};
+    const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+    const pendingFrames = {}; // uuid -> [{el, frag}] awaiting text for own frames
+    const pendingRelays = {}; // uuid -> [childWindow] awaiting text to pass down
+    function mountPage(el, frag, text) {
+      const pageBlob = new Blob([text], { type: 'text/html' });
+      const u = URL.createObjectURL(pageBlob);
+      resourceBlobs[u] = pageBlob;
+      el.src = u + frag;
+    }
+    function deliverPage(uuid, text) {
+      const frames = pendingFrames[uuid];
+      delete pendingFrames[uuid];
+      if (frames) for (const f of frames) mountPage(f.el, f.frag, text);
+      const relays = pendingRelays[uuid];
+      delete pendingRelays[uuid];
+      if (relays) {
+        for (const cw of relays) {
+          try { cw.postMessage({ __bundler_page: uuid, __bundler_text: text }, OWN_TARGET); } catch (err) { /* gone */ }
+        }
+      }
+    }
+    function ownFrameWindows() {
+      const out = [];
+      for (const f of Array.from(document.querySelectorAll('iframe'))) {
+        try { if (f.contentWindow) out.push(f.contentWindow); } catch (err) { /* detached */ }
+      }
+      return out;
+    }
+    window.addEventListener('message', function (e) {
+      const d = e.data;
+      if (!d || typeof d !== 'object' || !e.source) return;
+      // Origin gate first; the structural checks below (own-child-frames
+      // for requests, direct-parent + solicited-uuid for replies, the
+      // root's never-relay rule) are what hold in fully opaque chains
+      // where origin strings can't discriminate — a sandboxed root's
+      // FOREIGN wrapper still fails all three even though both serialize
+      // as real-vs-'null' rather than matching.
+      if (!trustedOrigin(e)) return;
+      if (typeof d.__bundler_need === 'string' && UUID_SHAPE.test(d.__bundler_need)) {
+        // Requests are honored only for this document's own child frames.
+        if (ownFrameWindows().indexOf(e.source) < 0) return;
+        const uuid = d.__bundler_need;
+        const text = pageTexts[uuid];
+        if (typeof text === 'string') {
+          try { e.source.postMessage({ __bundler_page: uuid, __bundler_text: text }, OWN_TARGET); } catch (err) { /* gone */ }
+          return;
+        }
+        if (isPageRoot || window.parent === window) return; // authoritative miss
+        const waiting = pendingRelays[uuid];
+        if (waiting) {
+          if (waiting.indexOf(e.source) < 0) waiting.push(e.source);
+          return;
+        }
+        // Never-answered uuids would otherwise accumulate forever under a
+        // request spray; past the cap (far above any real page count) new
+        // relays are dropped rather than remembered.
+        if (Object.keys(pendingRelays).length >= 128) return;
+        pendingRelays[uuid] = [e.source];
+        window.parent.postMessage({ __bundler_need: uuid }, OWN_TARGET);
+      } else if (
+        typeof d.__bundler_page === 'string' &&
+        UUID_SHAPE.test(d.__bundler_page) &&
+        typeof d.__bundler_text === 'string'
+      ) {
+        // The shape test is load-bearing beyond tidiness: the solicited
+        // check below uses the in operator, which matches prototype keys
+        // ('__proto__', 'constructor') — an unshaped key would reach
+        // deliverPage and throw, painting the error banner.
+        // Text is accepted only from the direct parent — the document
+        // that minted this one.
+        if (e.source !== window.parent || window.parent === window) return;
+        if (!(d.__bundler_page in pendingFrames) && !(d.__bundler_page in pendingRelays)) return;
+        deliverPage(d.__bundler_page, d.__bundler_text);
+      }
+    });
+
+    const uuids = Object.keys(manifest);
+    setStatus('Unpacking ' + uuids.length + ' assets...');
+
+    await Promise.all(uuids.map(async (uuid) => {
+      const entry = manifest[uuid];
+      try {
+        const binaryStr = atob(entry.data);
+        const bytes = new Uint8Array(binaryStr.length);
+        for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+
+        let finalBytes = bytes;
+        if (entry.compressed) {
+          if (typeof DecompressionStream !== 'undefined') {
+            const ds = new DecompressionStream('gzip');
+            const writer = ds.writable.getWriter();
+            const reader = ds.readable.getReader();
+            writer.write(bytes);
+            writer.close();
+            const chunks = [];
+            let totalLen = 0;
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              chunks.push(value);
+              totalLen += value.length;
+            }
+            finalBytes = new Uint8Array(totalLen);
+            let offset = 0;
+            for (const chunk of chunks) { finalBytes.set(chunk, offset); offset += chunk.length; }
+          } else {
+            console.warn('DecompressionStream not available, asset ' + uuid + ' may not render');
+          }
+        }
+
+        if (pageSet.has(uuid)) {
+          pageTexts[uuid] = new TextDecoder().decode(finalBytes);
+          return;
+        }
+        if (FONT_MIME.test(entry.mime) && MIME_TOKEN.test(entry.mime)) {
+          // Strict artifact hosts allow font-src data: but not blob:.
+          blobUrls[uuid] = 'data:' + entry.mime + ';base64,' +
+            (entry.compressed ? toBase64(finalBytes) : entry.data);
+        } else {
+          const blob = new Blob([finalBytes], { type: entry.mime });
+          blobUrls[uuid] = URL.createObjectURL(blob);
+          resourceBlobs[blobUrls[uuid]] = blob;
+        }
+      } catch (err) {
+        console.error('Failed to decode asset ' + uuid + ':', err);
+        const blob = new Blob([], { type: entry.mime });
+        blobUrls[uuid] = URL.createObjectURL(blob);
+        resourceBlobs[blobUrls[uuid]] = blob;
+      }
+    }));
+
+    const extResEl = document.querySelector('script[type="__bundler/ext_resources"]');
+    const extResources = extResEl ? JSON.parse(extResEl.textContent) : [];
+    const resourceMap = {};
+    for (const entry of extResources) {
+      if (blobUrls[entry.uuid]) resourceMap[entry.id] = blobUrls[entry.uuid];
+    }
+
+    // Artifact-host CSP (connect-src 'self') refuses fetch() of blob: URLs —
+    // consumers read these Blobs directly. Survives the swap like the error sink.
+    window.__resourceBlobs = resourceBlobs;
+
+    setStatus('Rendering...');
+    // Page uuids have no blob here — they ride inside about:blank#<uuid>
+    // frame markers the pass below resolves after the swap.
+    for (const uuid of uuids) {
+      if (pageSet.has(uuid)) continue;
+      template = template.split(uuid).join(blobUrls[uuid]);
+    }
+
+    // Strip integrity + crossorigin — blob URLs from a file:// document inherit
+    // a null origin, so crossorigin forces a CORS fetch that SRI then rejects.
+    // The manifest bytes are ours; SRI protects against CDN compromise, not this.
+    template = template.replace(/\s+integrity="[^"]*"/gi, '').replace(/\s+crossorigin="[^"]*"/gi, '');
+
+    const resourceScript = '<script>window.__resources = ' +
+      JSON.stringify(resourceMap).replace(/<\//g, '<\\/') +
+      ';</' + 'script>';
+    // Inject after <head> so the DOCTYPE stays first; prepending the script
+    // would push the parser into quirks mode. DOMParser always emits a <head>
+    // (synthesizing one if the source HTML omitted it) but may carry
+    // attributes through, so match the full opening tag. slice() rather than
+    // replace() keeps us clear of $-pattern substitution in resourceScript.
+    const headOpen = template.match(/<head[^>]*>/i);
+    if (headOpen) {
+      const i = headOpen.index + headOpen[0].length;
+      template = template.slice(0, i) + resourceScript + template.slice(i);
+    }
+
+    // Parse the template and swap the root element. Scripts inserted via
+    // DOMParser/replaceWith are inert per spec — re-create each with
+    // createElement so they execute, awaiting onload for src scripts to
+    // preserve ordering (React before ReactDOM before Babel before text/babel).
+    const doc = new DOMParser().parseFromString(template, 'text/html');
+    document.documentElement.replaceWith(doc.documentElement);
+
+    // Resolve page-frame markers: mint this document's own blob for each
+    // framed page — from local text when this is the root, otherwise by
+    // asking the direct parent over the relay protocol above. An
+    // unanswered request leaves the frame on about:blank, the same
+    // degraded state as a refused embed.
+    {
+      const MARKER = /^about:blank#([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(#.*)?$/;
+      const needed = [];
+      for (const el of Array.from(document.querySelectorAll('iframe'))) {
+        const m = MARKER.exec(el.getAttribute('src') || '');
+        if (!m) continue;
+        const text = pageTexts[m[1]];
+        if (typeof text === 'string') {
+          mountPage(el, m[2] || '', text);
+        } else if (window.parent !== window && !isPageRoot) {
+          const had = pendingFrames[m[1]];
+          (pendingFrames[m[1]] = had || []).push({ el: el, frag: m[2] || '' });
+          if (!had) needed.push(m[1]);
+        }
+      }
+      for (const uuid of needed) {
+        window.parent.postMessage({ __bundler_need: uuid }, OWN_TARGET);
+      }
+    }
+
+    const dead = Array.from(document.scripts);
+    for (const old of dead) {
+      const s = document.createElement('script');
+      for (const a of old.attributes) s.setAttribute(a.name, a.value);
+      s.textContent = old.textContent;
+      // text/babel scripts with a src: read and inline. transformScriptTags
+      // does XHR against the src, but blob:null/ from a file:// origin is
+      // silently dropped. Inlining makes it a plain inline babel script,
+      // which transformScriptTags handles unconditionally.
+      if ((s.type === 'text/babel' || s.type === 'text/jsx') && s.src) {
+        const pre = resourceBlobs[s.src.split('#')[0]];
+        s.textContent = pre ? await pre.text() : await (await fetch(s.src)).text();
+        s.removeAttribute('src');
+      }
+      const p = s.src ? new Promise(function(r) { s.onload = s.onerror = r; }) : null;
+      old.replaceWith(s);
+      if (p) await p;
+    }
+    // Babel standalone auto-transforms type=text/babel on DOMContentLoaded,
+    // which fired before we swapped the document. Trigger manually if present.
+    if (window.Babel && typeof window.Babel.transformScriptTags === 'function') {
+      window.Babel.transformScriptTags();
+    }
+  } catch (err) {
+    setStatus('Error unpacking: ' + err.message);
+    console.error('Bundle unpack error:', err);
+  }
+});
+
+  </script>
+
+  <script type="__bundler/manifest">
+{}
+  </script>
+
+  <script type="__bundler/ext_resources">
+[]
+  </script>
+
+  <script type="__bundler/page_order">
+[]
+  </script>
+
+  <script type="__bundler/template">
+"<!DOCTYPE html>\n<html lang=\"bg\"><head>\n<meta charset=\"utf-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<meta name=\"color-scheme\" content=\"light dark\">\n<meta name=\"supported-color-schemes\" content=\"light dark\">\n<title>Покана – Месец на онлайн безопасността в училище<\u002Ftitle>\n\n<!--[if mso]>\n<style type=\"text/css\">\n  table, td, div, p, a { font-family: Arial, sans-serif !important; }\n<\u002Fstyle>\n<![endif]-->\n<style type=\"text/css\">\n  a { color: #053264; }\n  @media only screen and (max-width: 620px) {\n    .wrap { width: 100% !important; }\n    .px { padding-left: 22px !important; padding-right: 22px !important; }\n    .h1 { font-size: 27px !important; line-height: 34px !important; }\n    .stack { display: block !important; width: 100% !important; padding: 0 0 14px 0 !important; text-align: left !important; }\n      }\n<\u002Fstyle>\n<\u002Fhead>\n<body style=\"margin:0; padding:0; background-color:#eef1f7; -webkit-text-size-adjust:100%;\">\n\n<span style=\"display:none; font-size:1px; color:#eef1f7; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;\">Откриващо събитие на „Месец на онлайн безопасността в училище“ – 6 октомври 2026 г., 16:30 ч., STEM центърът на 81. СУ „Виктор Юго“, София.<\u002Fspan>\n\n<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"background-color:#eef1f7;\">\n<tbody><tr>\n<td align=\"center\" style=\"padding:24px 12px 32px 12px;\">\n\n  <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"600\" class=\"wrap\" style=\"width:600px; max-width:600px; background-color:#ffffff; border-radius:20px; overflow:hidden;\">\n\n    <!-- Logo bar -->\n    <tbody><tr>\n      <td class=\"px\" align=\"left\" style=\"padding:26px 40px 22px 40px; background-color:#ffffff; border-bottom:1px solid #dfe3ef;\">\n        <img src=\"https://snazzy-croissant-0ac521.netlify.app/assets/logos/yettel-prepodavame.png\" width=\"183\" height=\"30\" alt=\"преподаваме.bg | Yettel\" style=\"display:block; border:0; width:183px; height:30px;\">\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Hero -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:36px 40px 34px 40px; background-color:#053264;\">\n        <p style=\"margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:14px; letter-spacing:2.4px; text-transform:uppercase; font-weight:bold; color:#b4ff00; mso-line-height-rule:exactly;\">Покана<\u002Fp>\n        <p class=\"h1\" style=\"margin:0 0 20px 0; font-family:Arial,Helvetica,sans-serif; font-size:33px; line-height:40px; font-weight:bold; color:#ffffff; mso-line-height-rule:exactly;\">Месец на <span style=\"color:#b4ff00;\">онлайн безопасността<\u002Fspan> в училище<\u002Fp>\n        <p style=\"margin:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:23px; color:#ffffff; mso-line-height-rule:exactly;\">Откриващо събитие на инициативата | 6 октомври 2026 г., София.<br>Един учебен месец. Стотици класни стаи.<\u002Fp>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Details -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:26px 40px 24px 40px; background-color:#fafadc;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%;\">\n          <tbody><tr>\n            <td class=\"stack\" align=\"left\" valign=\"top\" width=\"33%\" style=\"width:33%; padding:0 12px 0 0; font-family:Arial,Helvetica,sans-serif;\">\n              <p style=\"margin:0 0 5px 0; font-size:10px; line-height:13px; letter-spacing:1.6px; text-transform:uppercase; font-weight:bold; color:#4a6a95; mso-line-height-rule:exactly;\">Дата<\u002Fp>\n              <p style=\"margin:0; font-size:15px; line-height:21px; font-weight:bold; color:#053264; mso-line-height-rule:exactly;\">6 октомври 2026 г.<\u002Fp>\n            <\u002Ftd>\n            <td class=\"stack\" align=\"left\" valign=\"top\" width=\"27%\" style=\"width:27%; padding:0 12px 0 0; font-family:Arial,Helvetica,sans-serif;\">\n              <p style=\"margin:0 0 5px 0; font-size:10px; line-height:13px; letter-spacing:1.6px; text-transform:uppercase; font-weight:bold; color:#4a6a95; mso-line-height-rule:exactly;\">Час<\u002Fp>\n              <p style=\"margin:0; font-size:15px; line-height:21px; font-weight:bold; color:#053264; mso-line-height-rule:exactly;\">16:30 – 18:00 ч.<\u002Fp>\n              <p style=\"margin:3px 0 0 0; font-size:13px; line-height:19px; color:#3c5f8c; mso-line-height-rule:exactly;\">Регистрация на гостите от 16:15 ч.<\u002Fp>\n            <\u002Ftd>\n            <td class=\"stack\" align=\"left\" valign=\"top\" width=\"40%\" style=\"width:40%; padding:0; font-family:Arial,Helvetica,sans-serif;\">\n              <p style=\"margin:0 0 5px 0; font-size:10px; line-height:13px; letter-spacing:1.6px; text-transform:uppercase; font-weight:bold; color:#4a6a95; mso-line-height-rule:exactly;\">Място<\u002Fp>\n              <p style=\"margin:0; font-size:15px; line-height:21px; font-weight:bold; color:#053264; mso-line-height-rule:exactly;\">STEM центърът на 81. СУ „Виктор Юго“<\u002Fp>\n              <p style=\"margin:3px 0 0 0; font-size:13px; line-height:19px; color:#3c5f8c; mso-line-height-rule:exactly;\">гр. София, ул. Бъднина 3<\u002Fp>\n            <\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Body -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:34px 40px 0 40px; background-color:#ffffff;\">\n        <p style=\"margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:16px; line-height:26px; color:#1d1d1d; mso-line-height-rule:exactly;\">Уважаема д-р Иванова,<\u002Fp>\n        <p style=\"margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Имаме удоволствието да Ви поканим на откриващото събитие на инициативата <a href=\"https://prepodavame.bg/online-bezopasnost/\" style=\"color:#053264; font-weight:bold; text-decoration:underline;\">„Месец на онлайн безопасността в училище“<\u002Fa>, което ще се проведе на 6 октомври 2026 г. от 16:30 до 18:30 ч. в STEM центъра на 81. СУ „Виктор Юго“, гр. София, ул. Бъднина 3. Регистрацията на гостите започва в 16:15 ч.<\u002Fp>\n        <p style=\"margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Инициативата се провежда от 1 до 31 октомври и кани учителите от 1. до 12. клас да превърнат темите за дигиталната среда в част от учебния ден. На събитието ще представим:<\u002Fp>\n\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%; margin:0 0 18px 0;\">\n          <tbody><tr>\n            <td valign=\"top\" width=\"16\" style=\"width:16px; padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#fa4155; font-weight:bold; mso-line-height-rule:exactly;\">•<\u002Ftd>\n            <td valign=\"top\" style=\"padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Какво представлява инициативата и как училищата могат да се включат в нея;<\u002Ftd>\n          <\u002Ftr>\n          <tr>\n            <td valign=\"top\" width=\"16\" style=\"width:16px; padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#fa4155; font-weight:bold; mso-line-height-rule:exactly;\">•<\u002Ftd>\n            <td valign=\"top\" style=\"padding:0 0 10px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Как изглеждат на практика дейностите, включени в кампанията;<\u002Ftd>\n          <\u002Ftr>\n          <tr>\n            <td valign=\"top\" width=\"16\" style=\"width:16px; padding:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#fa4155; font-weight:bold; mso-line-height-rule:exactly;\">•<\u002Ftd>\n            <td valign=\"top\" style=\"padding:0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Какви безплатни ресурси могат да използват учителите.<\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n\n        <p style=\"margin:0 0 18px 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">По време на събитието ще съберем заедно учители, директори на държавни и частни училища, водещи експерти в сферата на образованието и ученици. Ще имаме възможност да видим на практика как различните дейности се прилагат в няколко класа в 81. СУ „Виктор Юго“ в София.<\u002Fp>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Resources card -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:14px 40px 30px 40px; background-color:#ffffff;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%; background-color:#053264; border-radius:16px;\">\n          <tbody><tr>\n            <td align=\"center\" style=\"padding:26px 22px 24px 22px;\">\n              <p style=\"margin:0 0 20px 0; font-family:Arial,Helvetica,sans-serif; font-size:17px; line-height:24px; font-weight:bold; color:#ffffff; mso-line-height-rule:exactly;\">Инициативата в цифри<\u002Fp>\n              <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:0 auto;\">\n                <tbody><tr>\n                  <td align=\"center\" valign=\"top\" style=\"padding:0 16px; font-family:Arial,Helvetica,sans-serif;\">\n                    <p style=\"margin:0; font-size:26px; line-height:30px; font-weight:bold; color:#b4ff00; mso-line-height-rule:exactly;\">60<\u002Fp>\n                    <p style=\"margin:2px 0 0 0; font-size:11px; line-height:15px; color:#ffffff; mso-line-height-rule:exactly;\">ресурса от платформата<br>„Компас в дигиталния свят“<\u002Fp>\n                  <\u002Ftd>\n                  <td align=\"center\" valign=\"top\" style=\"padding:0 16px; font-family:Arial,Helvetica,sans-serif;\">\n                    <p style=\"margin:0; font-size:26px; line-height:30px; font-weight:bold; color:#b4ff00; mso-line-height-rule:exactly;\">5<\u002Fp>\n                    <p style=\"margin:2px 0 0 0; font-size:11px; line-height:15px; color:#ffffff; mso-line-height-rule:exactly;\">различни дейности<br>за участие<\u002Fp>\n                  <\u002Ftd>\n                  <td align=\"center\" valign=\"top\" style=\"padding:0 16px; font-family:Arial,Helvetica,sans-serif;\">\n                    <p style=\"margin:0; font-size:26px; line-height:30px; font-weight:bold; color:#b4ff00; mso-line-height-rule:exactly;\">20<\u002Fp>\n                    <p style=\"margin:2px 0 0 0; font-size:11px; line-height:15px; color:#ffffff; mso-line-height-rule:exactly;\">награди за най-активните<br>учители и училища<\u002Fp>\n                  <\u002Ftd>\n                <\u002Ftr>\n              <\u002Ftbody><\u002Ftable>\n            <\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n        <p style=\"margin:26px 0 0 0; font-family:Arial,Helvetica,sans-serif; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Инициативата се организира от фондация „Заедно в час“ чрез платформата prepodavame.bg, в партньорство с Yettel България и с медийната подкрепа на bTV Media Group. Повече информация: <a href=\"https://prepodavame.bg/online-bezopasnost/\" style=\"color:#053264; text-decoration:underline;\">prepodavame.bg/online-bezopasnost<\u002Fa><\u002Fp>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- RSVP -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:0 40px 0 40px; background-color:#ffffff;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%; background-color:#fafadc; border-left:4px solid #b4ff00; border-radius:10px;\">\n          <tbody><tr>\n            <td align=\"left\" style=\"padding:18px 22px; font-family:Arial,Helvetica,sans-serif;\">\n              <p style=\"margin:0; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">Моля, потвърдете участието си <strong style=\"color:#053264;\">до 25 септември<\u002Fstrong> на <a href=\"mailto:g.efremova@zaednovchas.bg\" style=\"color:#053264; font-weight:bold; text-decoration:underline;\">g.efremova@zaednovchas.bg<\u002Fa> или на телефон <a href=\"tel:+359893322373\" style=\"color:#053264; font-weight:bold; text-decoration:none; white-space:nowrap;\">0893 322 373<\u002Fa> – Гергана Ефремова.<\u002Fp>\n            <\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Signature -->\n    <tr>\n      <td class=\"px\" align=\"left\" style=\"padding:30px 40px 34px 40px; background-color:#ffffff;\">\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" width=\"100%\" style=\"width:100%; border-top:1px solid #dfe3ef;\">\n          <tbody><tr>\n            <td style=\"padding:26px 0 0 0; font-family:Arial,Helvetica,sans-serif;\">\n              <p style=\"margin:0 0 16px 0; font-size:15px; line-height:25px; color:#1d1d1d; mso-line-height-rule:exactly;\">За нас ще бъде чест да присъствате на събитието.<\u002Fp>\n              <p style=\"margin:0 0 4px 0; font-size:15px; line-height:24px; color:#1d1d1d; mso-line-height-rule:exactly;\">С уважение,<\u002Fp>\n              <p style=\"margin:0; font-size:16px; line-height:24px; font-weight:bold; color:#053264; mso-line-height-rule:exactly;\">Траян Траянов<\u002Fp>\n              <p style=\"margin:2px 0 0 0; font-size:13px; line-height:20px; color:#4a6a95; mso-line-height-rule:exactly;\">Изпълнителен директор<br>Фондация „Заедно в час“<\u002Fp>\n            <\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n      <\u002Ftd>\n    <\u002Ftr>\n\n    <!-- Partners -->\n    <tr>\n      <td class=\"px\" align=\"center\" style=\"padding:28px 40px 26px 40px; background-color:#f4f6fb; border-top:1px solid #dfe3ef;\">\n        <p style=\"margin:0 0 20px 0; font-family:Arial,Helvetica,sans-serif; font-size:11px; line-height:16px; letter-spacing:1.6px; text-transform:uppercase; font-weight:bold; color:#4a6a95; mso-line-height-rule:exactly;\">Организатори и партньори<\u002Fp>\n        <table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" style=\"margin:0 auto;\">\n          <tbody><tr>\n            <td align=\"center\" valign=\"middle\" style=\"padding:0 16px;\">\n              <img src=\"https://snazzy-croissant-0ac521.netlify.app/assets/logos/zaedno-v-chas.png\" width=\"58\" height=\"26\" alt=\"Фондация „Заедно в час“\" style=\"display:block; border:0; width:58px; height:26px;\">\n            <\u002Ftd>\n            <td align=\"center\" valign=\"middle\" style=\"padding:0 16px;\">\n              <img src=\"https://snazzy-croissant-0ac521.netlify.app/assets/logos/yettel-prepodavame.png\" width=\"159\" height=\"26\" alt=\"преподаваме.bg | Yettel\" style=\"display:block; border:0; width:159px; height:26px;\">\n            <\u002Ftd>\n            <td align=\"center\" valign=\"middle\" style=\"padding:0 16px;\">\n              <img src=\"https://snazzy-croissant-0ac521.netlify.app/assets/logos/btv-media-group.png\" width=\"79\" height=\"26\" alt=\"bTV Media Group\" style=\"display:block; border:0; width:79px; height:26px;\">\n            <\u002Ftd>\n          <\u002Ftr>\n        <\u002Ftbody><\u002Ftable>\n      <\u002Ftd>\n    <\u002Ftr>\n\n  <\u002Ftbody><\u002Ftable>\n\n<\u002Ftd>\n<\u002Ftr>\n<\u002Ftbody><\u002Ftable>\n\n\n\n<\u002Fbody><\u002Fhtml>"
+  </script>
+</body>
+</html>
